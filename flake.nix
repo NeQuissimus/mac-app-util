@@ -14,8 +14,8 @@
 
 {
   inputs = {
-    # This has SBCL 2.4.5 and docktuil 3.1.3 which are known to work
-    nixpkgs.url = "github:NixOS/nixpkgs/cd18e2ae9ab8e2a0a8d715b60c91b54c0ac35ff9";
+    nixpkgs.url =
+      "github:NixOS/nixpkgs/1a33aa67b29bfdf84617ef87dae559526368aaa7";
     cl-nix-lite.url = "github:hraban/cl-nix-lite";
     flake-compat = {
       # Use my own fixed-output-derivation branch because I don’t want users to
@@ -33,69 +33,64 @@
             type = types.bool;
             default = builtins.hasAttr pkgs.stdenv.system self.packages;
             example = true;
-            description = "Whether to enable mac-app-util home manager integration";
+            description =
+              "Whether to enable mac-app-util home manager integration";
           };
         };
         config = lib.mkIf config.targets.darwin.mac-app-util.enable {
           home.activation = {
-            trampolineApps = let
-              mac-app-util = self.packages.${pkgs.stdenv.system}.default;
-            in lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-              fromDir="$HOME/Applications/Home Manager Apps"
-              toDir="$HOME/Applications/Home Manager Trampolines"
-              ${mac-app-util}/bin/mac-app-util sync-trampolines "$fromDir" "$toDir"
-            '';
+            trampolineApps =
+              let mac-app-util = self.packages.${pkgs.stdenv.system}.default;
+              in lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+                fromDir="$HOME/Applications/Home Manager Apps"
+                toDir="$HOME/Applications/Home Manager Trampolines"
+                ${mac-app-util}/bin/mac-app-util sync-trampolines "$fromDir" "$toDir"
+              '';
           };
         };
       };
       darwinModules.default = { pkgs, ... }: {
-        system.activationScripts.postActivation.text = let
-          mac-app-util = self.packages.${pkgs.stdenv.system}.default;
-        in ''
-          ${mac-app-util}/bin/mac-app-util sync-trampolines "/Applications/Nix Apps" "/Applications/Nix Trampolines"
-        '';
+        system.activationScripts.postActivation.text =
+          let mac-app-util = self.packages.${pkgs.stdenv.system}.default;
+          in ''
+            ${mac-app-util}/bin/mac-app-util sync-trampolines "/Applications/Nix Apps" "/Applications/Nix Trampolines"
+          '';
       };
-    }
-    //
-    (with flake-utils.lib; eachSystem (with system; [ x86_64-darwin aarch64-darwin ]) (system:
-      with rec {
-        pkgs = nixpkgs.legacyPackages.${system}.extend cl-nix-lite.overlays.default;
-      };
-      {
-        packages = {
-          default = pkgs.callPackage ({
-            lispPackagesLite
-          , dockutil
-          , findutils
-          , jq
-          , rsync
-          }: with lispPackagesLite; lispScript rec {
-            name = "mac-app-util";
-            src = ./main.lisp;
-            dependencies = [
-              alexandria
-              inferior-shell
-              cl-interpol
-              cl-json
-              str
-              trivia
-            ];
-            nativeBuildInputs = [ pkgs.makeBinaryWrapper ];
-            postInstall = ''
-              wrapProgramBinary "$out/bin/${name}" \
-                --suffix PATH : "${with pkgs; lib.makeBinPath [
-                  dockutil
-                  rsync
-                  findutils
-                  jq
-                ]}"
-            '';
-            installCheckPhase = ''
-              $out/bin/${name} --help
-            '';
-            doInstallCheck = true;
-            meta.license = pkgs.lib.licenses.agpl3Only;
-          }) {};
-        };
-      }));
+    } // (with flake-utils.lib;
+      eachSystem (with system; [ x86_64-darwin aarch64-darwin ]) (system:
+        with rec {
+          pkgs = nixpkgs.legacyPackages.${system}.extend
+            cl-nix-lite.overlays.default;
+        }; {
+          packages = {
+            default = pkgs.callPackage
+              ({ lispPackagesLite, dockutil, findutils, jq, rsync }:
+                with lispPackagesLite;
+                lispScript rec {
+                  name = "mac-app-util";
+                  src = ./main.lisp;
+                  dependencies = [
+                    alexandria
+                    inferior-shell
+                    cl-interpol
+                    cl-json
+                    str
+                    trivia
+                  ];
+                  nativeBuildInputs = [ pkgs.makeBinaryWrapper ];
+                  postInstall = ''
+                    wrapProgramBinary "$out/bin/${name}" \
+                      --suffix PATH : "${
+                        with pkgs;
+                        lib.makeBinPath [ dockutil rsync findutils jq ]
+                      }"
+                  '';
+                  installCheckPhase = ''
+                    $out/bin/${name} --help
+                  '';
+                  doInstallCheck = true;
+                  meta.license = pkgs.lib.licenses.agpl3Only;
+                }) { };
+          };
+        }));
 }
